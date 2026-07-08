@@ -126,3 +126,17 @@ def search_cmd(
     from phrasebank.search import run_search
 
     run_search(query, top_k=top_k)
+
+
+# ── upgrade ─────────────────────────────────────────────────────────────────
+
+@app.command("upgrade")
+@app.command("update")  # alias
+def upgrade_cmd(
+    yes: bool = typer.Option(False, "--yes", "-y", help="跳过确认"),
+) -> None:
+    """检测是否有新版本并自动升级 ppb。"""
+    from phrasebank.upgrade import run_upgrade
+
+    rc = run_upgrade(assume_yes=yes)
+    raise SystemExit(rc)
