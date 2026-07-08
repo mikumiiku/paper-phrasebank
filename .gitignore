@@ -21,6 +21,9 @@ ppb_data/
 # user test fixtures (private academic PDFs)
 test_input/
 
+# local engineering tracking (personal workflow — never commit)
+.planning/
+
 # env / editor
 .env
 .envrc
