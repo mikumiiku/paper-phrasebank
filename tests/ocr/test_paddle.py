@@ -8,7 +8,7 @@ import respx
 from phrasebank.ocr import get_backend
 from phrasebank.ocr.paddle import PaddleBackend
 
-BASE = "https://ocr.example.com"
+BASE = "http://localhost:8866"
 
 
 @respx.mock
@@ -21,20 +21,22 @@ def test_paddle_dict_text():
 
 
 @respx.mock
-def test_paddle_results_of_dicts():
+def test_paddle_results_with_rec_texts():
+    """Real PaddleOCR OCR result shape under ``rec_texts``."""
     respx.post(BASE + "/ocr").mock(
-        return_value=httpx.Response(200, json={"results": [{"text": "x"}, {"text": "y"}]})
+        return_value=httpx.Response(
+            200,
+            json={"prunedResult": {"rec_texts": ["x", "y"], "rec_scores": [0.9, 0.8]}},
+        )
     )
     be = PaddleBackend(api_key="k", base_url=BASE)
     assert be.recognize(1, b"img") == "x\ny"
 
 
-def test_paddle_uses_default_base_url_when_empty():
-    """PaddleBackend no longer requires a base_url — it falls back to the
-    conventional local deployment address http://localhost:8866."""
+def test_paddle_uses_official_cloud_by_default():
+    """PaddleBackend defaults to the official PaddleOCR cloud — no self-host."""
     be = PaddleBackend(api_key="k", base_url="")
-    # stored via the underlying client's base_url
-    assert "localhost:8866" in str(be._client.base_url)
+    assert "paddleocr.aistudio-app.com" in str(be._client.base_url)
 
 
 def test_paddle_override_base_url_is_honoured():

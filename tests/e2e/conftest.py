@@ -1,5 +1,14 @@
-"""E2E fixtures: synthetic PDF + mocked LLM/OCR."""
+"""E2E fixtures: synthetic PDF + mocked LLM/OCR.
+
+Adds a custom ``--online`` CLI flag that enables tests hitting real cloud
+endpoints (PaddleOCR, MinerU). Offline by default so CI stays deterministic.
+"""
 from __future__ import annotations
+
+
+def pytest_addoption(parser):
+    parser.addoption("--online", action="store_true", default=False,
+                     help="run tests that hit real cloud endpoints")
 
 import zlib
 import struct

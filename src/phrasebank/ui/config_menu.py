@@ -90,30 +90,35 @@ def _step_ocr(s: Settings) -> Settings:
         "选择 OCR 后端（用于处理图片型 PDF 页面）：",
         choices=[
             questionary.Choice("暂不启用 OCR", ""),
-            questionary.Choice("MinerU API (官方云端)", "mineru"),
-            questionary.Choice("PaddleOCR (推荐本地部署, 默认 http://localhost:8866)", "paddle"),
+            questionary.Choice(
+                "MinerU (推荐本地部署, 默认 http://localhost:8000)",
+                "mineru",
+            ),
+            questionary.Choice(
+                "PaddleOCR (官方云端, 需 aiStudio access token)",
+                "paddle",
+            ),
         ],
     ).ask()
     if backend is None:
         raise typer.Exit(1)
     s.ocr_backend = backend
     if backend:
-        needs_key = (backend == "mineru")
-        if needs_key:
-            s.ocr_api_key = _ask_password("MinerU API Key：", allow_empty=False)
-        else:
-            questionary.print("  [dim]PaddleOCR 默认无认证, API Key 可跳过。[/dim]")
-            s.ocr_api_key = _ask_password(
-                "PaddleOCR API Key（本地默认无认证, 回车跳过）：", allow_empty=True
-            )
-        # Official/local-auto base_url (shown to the user for transparency)
         official = configured_base_url(backend)
-        if official:
-            questionary.print(f"  官方/默认地址: [cyan]{official}[/dim]（使用默认直接回车）")
-            override = _ask_text("Base URL (回车使用默认)：", default=official)
-            s.ocr_base_url = override
+        if backend == "mineru":
+            questionary.print("  [dim]默认使用本地 mineru-api (http://localhost:8000)。[/dim]")
+            questionary.print("  [dim]如需云模式, 请在 mineru.net 控制台申请 app_id:secret_key。[/dim]")
+            s.ocr_api_key = _ask_password("MinerU API Key (格式 app_id:secret_key, 本地可回车跳过)：", allow_empty=True)
+            if s.ocr_api_key:
+                questionary.print("  [cyan]检测到密钥, 已切换到云模式。[/cyan]")
+                s.ocr_base_url = ""  # let get_backend fill cloud default implicitly
+            else:
+                s.ocr_base_url = official
         else:
-            s.ocr_base_url = ""
+            questionary.print("  [dim]PaddleOCR 官方云端, 默认 https://paddleocr.aistudio-app.com[/dim]")
+            questionary.print("  [dim]申请 access token: https://aistudio.baidu.com/account/accessToken[/dim]")
+            s.ocr_api_key = _ask_password("PaddleOCR Access Token：", allow_empty=False)
+            s.ocr_base_url = official
     return s
 
 
