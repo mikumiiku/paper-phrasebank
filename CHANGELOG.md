@@ -2,6 +2,18 @@
 
 All notable changes to `paper-phrasebank` will be documented in this file.
 
+## [1.0.1] - 2026-07-08
+
+### Fixed
+- ``ppb upgrade`` used an unauthenticated GitHub API call (`urllib`) with a
+  strict 60 req/h shared rate-limit, which hit 403 under any sustained use.
+  Now retries via the user's authenticated ``gh`` CLI (separate bucket,
+  ~5000 req/h), and offers a copy-paste ``pip install`` fallback from the
+  GitHub release asset when both paths fail.
+
+
+## [1.0.0] - 2026-07-08
+
 ## [1.0.0] - 2026-07-08
 
 ### Added

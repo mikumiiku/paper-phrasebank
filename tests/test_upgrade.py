@@ -167,6 +167,43 @@ def test_run_upgrade_success_runs_command(tmp_path):
     assert "uv" in cmd and "install" in cmd
 
 
+def test_fetch_latest_release_urllib_403_falls_back_to_gh():
+    """When urllib hits 403 (rate-limit), the function MUST retry via the
+    ``gh`` CLI and return a successful ReleaseInfo rather than propagating
+    the 403 to the user."""
+    import urllib.error, phrasebank.upgrade as up_mod
+    # urllib raises HTTPError 403
+    def failing_urllib_request(url, **kwargs):
+        raise urllib.error.HTTPError(url, 403, "rate limit", {}, None)
+    orig_urlopen = up_mod.urllib.request.urlopen
+    up_mod.urllib.request.urlopen = failing_urllib_request  # type: ignore[assignment]
+    up_mod._gh_available = lambda: True
+    up_mod._fetch_via_gh = lambda timeout=20.0: {
+        "tag_name": "v2.3.4", "published_at": "2026-01-01T00:00:00Z",
+        "body": "", "tarball_url": "https://x/tgz", "assets": []}
+    try:
+        rel = up_mod.fetch_latest_release()
+        assert rel.version == "2.3.4"
+    finally:
+        up_mod.urllib.request.urlopen = orig_urlopen
+
+
+def test_fetch_latest_release_gh_unavailable_raises_cleanly():
+    """If urllib fails AND gh is not installed, raise UpgradeError with the
+    urllib error surfaced — never crash, never swallow."""
+    import urllib.error, phrasebank.upgrade as up_mod
+    def failing(url, **kw):
+        raise urllib.error.HTTPError(url, 403, "rate limit", {}, None)
+    orig = up_mod.urllib.request.urlopen
+    up_mod.urllib.request.urlopen = failing  # type: ignore[assignment]
+    up_mod._gh_available = lambda: False
+    try:
+        with pytest.raises(up_mod.UpgradeError, match="urllib"):
+            up_mod.fetch_latest_release()
+    finally:
+        up_mod.urllib.request.urlopen = orig
+
+
 def test_run_upgrade_declined_cancel(tmp_path):
     release = _rel("2.0.0")
 

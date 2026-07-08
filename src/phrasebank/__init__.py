@@ -1,6 +1,6 @@
 """paper-phrasebank: personal academic phrase bank CLI."""
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 FUNCTION_CATEGORIES: list[str] = [
     "研究背景引入句",

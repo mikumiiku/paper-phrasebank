@@ -101,11 +101,25 @@ def current_version() -> str:
 
 
 def fetch_latest_release(timeout: float = 15.0) -> ReleaseInfo:
-    """Call the GitHub releases/latest endpoint and return a ``ReleaseInfo``.
+    """Resolve the latest release metadata.
 
-    Raises ``UpgradeError`` on any failure (network, JSON, missing asset).
-    The caller decides how to surface it.
+    Strategy (first success wins):
+
+    1. **urllib direct** — unauthenticated, but subject to the strict
+       60 req/h shared rate-limit. Most attempts succeed.
+    2. **gh CLI fallback** — when the direct call fails with HTTP 403
+       (rate-limit) *or* any network error, fall back to the user's ``gh``
+       CLI which is authenticated against their GitHub OAuth and enjoys a
+       much higher limit (~5000 req/h). This is what saves the UX when the
+       shared bucket is exhausted.
+    3. if both fail, the collected error messages are surfaced to the user
+       (first-fault — never swallowed).
+
+    Raises ``UpgradeError`` only when no strategy works.
     """
+    errors: list[str] = []
+
+    # Strategy 1: unauthenticated urllib call.
     try:
         req = urllib.request.Request(
             GITHUB_API_LATEST,
@@ -114,14 +128,25 @@ def fetch_latest_release(timeout: float = 15.0) -> ReleaseInfo:
         )
         with urllib.request.urlopen(req, timeout=timeout) as r:
             payload = json.load(r)
+        return _parse_release_payload(payload)
     except (urllib.error.URLError, urllib.error.HTTPError) as exc:
-        raise UpgradeError(f"无法连接 GitHub: {exc}") from exc
+        errors.append(f"[urllib] {exc}")
     except (json.JSONDecodeError, ValueError) as exc:
-        raise UpgradeError(f"GitHub 响应解析失败: {exc}") from exc
+        errors.append(f"[urllib] 解析失败: {exc}")
 
-    tag = (payload.get("tag_name") or "").lstrip("v")
-    if not tag:
-        raise UpgradeError(f"GitHub release 中缺少 tag_name: {payload}")
+    # Strategy 2: gh CLI (authenticated against user's GitHub OAuth).
+    if _gh_available():
+        try:
+            payload = _fetch_via_gh()
+            return _parse_release_payload(payload)
+        except UpgradeError as exc:
+            errors.append(f"[gh] {exc}")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"[gh] {exc}")
+
+    # Exhausted — surface everything we learned.
+    detail = "; ".join(errors) if errors else "未知错误"
+    raise UpgradeError(f"无法连接 GitHub: {detail}")
     body = payload.get("body") or ""
     assets = payload.get("assets") or []
     wheel_url: str | None = None
@@ -294,7 +319,20 @@ def run_upgrade(
         release = _fetch_latest_release()
     except UpgradeError as exc:
         console.print(f"{exc}", style="red")
-        console.print(f"手动访问: {GITHUB_RELEASE_PAGE}", style="blue")
+        console.print(f"If the GitHub API rate-limit is exhausted (HTTP 403), "
+                      f"any of the following works as an immediate fallback:\n")
+        # Wheel install from the GitHub release asset (works even offline-ish).
+        wheel_asset = TARBALL_URL_TMPL.format(ver="1.0.1").replace(
+            ".tar.gz", "-py3-none-any.whl"
+        )
+        console.print(f"  1) Upgrade directly from the release asset:")
+        console.print(
+            f"     pip install {GITHUB_RELEASE_PAGE}/download/v1.0.1/"
+            f"paper_phrasebank-1.0.1-py3-none-any.whl"
+        )
+        console.print(f"  2) Or, with gh CLI authenticated (`gh auth login`):")
+        console.print(f"     ppb upgrade     # automatically re-tries via gh")
+        console.print(f"  3) Manual release page: {GITHUB_RELEASE_PAGE}")
         return 1
 
     console.print(f"最新版本: {release.version}  发布于: {release.published_at}",
@@ -373,6 +411,52 @@ def _real_run(command: list[str]) -> int:
     """Run a command, streaming stdout/stderr to the terminal."""
     proc = subprocess.run(command)
     return proc.returncode
+
+
+# ── gh CLI fallback helpers ─────────────────────────────────────────────────
+
+def _gh_available() -> bool:
+    return shutil.which("gh") is not None
+
+
+def _fetch_via_gh(timeout: float = 20.0) -> dict:
+    """Use the ``gh`` CLI to fetch the latest release. Authenticated against
+    user's GitHub OAuth when ``gh`` is logged in, which uses a separate,
+    higher rate-limit bucket."""
+    try:
+        result = subprocess.run(
+            ["gh", "api", GITHUB_API_LATEST.removeprefix("https://api.github.com")],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        raise UpgradeError(f"gh 命令执行失败: {exc}") from exc
+    if result.returncode != 0:
+        raise UpgradeError(f"gh 退出码 {result.returncode}: {result.stderr[:200]}")
+    try:
+        return json.loads(result.stdout)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise UpgradeError(f"gh 响应解析失败: {exc}") from exc
+
+
+def _parse_release_payload(payload: dict) -> ReleaseInfo:
+    tag = (payload.get("tag_name") or "").lstrip("v")
+    if not tag:
+        raise UpgradeError(f"release payload 中缺少 tag_name: {payload}")
+    body = payload.get("body") or ""
+    assets = payload.get("assets") or []
+    wheel_url: str | None = None
+    for a in assets:
+        if (a.get("name") or "").endswith(".whl"):
+            wheel_url = a.get("browser_download_url")
+            break
+    return ReleaseInfo(
+        tag_name=payload["tag_name"],
+        version=tag,
+        published_at=payload.get("published_at", ""),
+        body=body,
+        tarball_url=payload.get("tarball_url", ""),
+        wheel_url=wheel_url,
+    )
 
 
 # ── Errors ────────────────────────────────────────────────────────────────────
