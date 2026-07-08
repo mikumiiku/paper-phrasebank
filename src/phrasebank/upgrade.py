@@ -50,9 +50,16 @@ from rich.console import Console
 
 # Public fork/repo identifiers; overridden only in tests via injection.
 GITHUB_REPO = "mikumiiku/paper-phrasebank"
+GITHUB_USER = GITHUB_REPO.split("/")[0]
 GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASE_PAGE = f"https://github.com/{GITHUB_REPO}/releases"
 PYPI_NAME = "paper-phrasebank"
+
+# Git clone URLs — SSH first (works with SSH key, no PAT needed), HTTPS as
+# fallback for users without an SSH key set up on their machine.
+GIT_URL_SSH = f"git+ssh://git@github.com/{GITHUB_REPO}.git"
+GIT_URL_HTTPS = f"git+https://github.com/{GITHUB_REPO}.git"
+TARBALL_URL_TMPL = f"https://github.com/{GITHUB_REPO}/archive/refs/tags/v{{ver}}.tar.gz"
 
 console = Console(markup=False, highlight=False)
 
@@ -216,16 +223,26 @@ def _is_pipx_installed() -> bool:
 
 # ── Command construction ──────────────────────────────────────────────────────
 
-def build_upgrade_command(method: str, release: ReleaseInfo) -> UpgradePlan:
-    """Return the concrete upgrade command for the detected install backend."""
+def build_upgrade_command(
+    method: str,
+    release: ReleaseInfo,
+    *,
+    git_url: str = GIT_URL_SSH,
+) -> UpgradePlan:
+    """Return the concrete upgrade command for the detected install backend.
+
+    ``git_url`` is one of ``GIT_URL_SSH`` (default) or ``GIT_URL_HTTPS`` — it
+    selects the transport ``uv``/``pip`` use to fetch the repo. SSH-first means
+    users with a deployed GitHub SSH key get touch-free upgrades; HTTPS is
+    offered via ``--https`` for networks that block SSH.
+    """
     ver = release.version
-    gh_url = f"https://github.com/{GITHUB_REPO}"
     if method == "uv":
         return UpgradePlan(
             method="uv",
             command=[
                 "uv", "tool", "install", "--force",
-                "--from", f"{gh_url}.git",
+                "--from", f"{git_url}",
                 "--reinstall",
                 "--index-url", "https://pypi.org/simple/",
                 PYPI_NAME,
@@ -238,15 +255,14 @@ def build_upgrade_command(method: str, release: ReleaseInfo) -> UpgradePlan:
             command=["pipx", "upgrade", PYPI_NAME],
             description=f"pipx 升级 ({ver})",
         )
-    # pip (the generic fallback) — prefer index install, fall back to git URL
+    # pip (the generic fallback) — SSH transport via git+ssh://
     return UpgradePlan(
         method="pip",
         command=[
             sys.executable, "-m", "pip", "install", "--upgrade",
-            "--prefer-binary",
-            f"{PYPI_NAME}>={ver}",
+            "--prefer-binary", git_url,
         ],
-        description=f"pip 升级到 >={ver}",
+        description=f"pip 升级 ({ver}, {git_url.split(':',1)[0]})",
     )
 
 
@@ -255,6 +271,7 @@ def build_upgrade_command(method: str, release: ReleaseInfo) -> UpgradePlan:
 def run_upgrade(
     *,
     assume_yes: bool = False,
+    prefer_https: bool = False,
     _fetch_latest_release=fetch_latest_release,
     _detect_method: callable = detect_install_method,
     _run_command: callable = None,
@@ -263,8 +280,13 @@ def run_upgrade(
 
     Pure-injection style — all I/O collaborators are overridable so tests can
     exercise every branch without touching the network or the filesystem.
+
+    ``prefer_https`` toggles git clone protocol: SSH by default (works out of
+    the box for anyone who has a GitHub SSH key deployed — no PAT needed),
+    HTTPS when the user explicitly opts in via ``--https``.
     """
     run_cmd = _run_command or _real_run
+    _git_url = GIT_URL_HTTPS if prefer_https else GIT_URL_SSH
     current = current_version()
     console.print(f"当前版本: {current}", style="cyan")
 
@@ -296,8 +318,9 @@ def run_upgrade(
             return 0
 
     method = _detect_method()
-    plan = build_upgrade_command(method, release)
+    plan = build_upgrade_command(method, release, git_url=_git_url)
     console.print(f"安装方式: {method}", style="cyan")
+    console.print(f"升级协议: {_git_url.split(':', 1)[0]}")
     console.print(f"执行命令: {' '.join(plan.command)}")
 
     rc = run_cmd(plan.command)

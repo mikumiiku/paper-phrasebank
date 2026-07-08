@@ -82,12 +82,18 @@ def test_current_version_returns_nonempty():
 
 # ── build_upgrade_command ────────────────────────────────────────────────
 
-def test_build_upgrade_command_uv():
+def test_build_upgrade_command_uv_default_ssh():
     plan = build_upgrade_command("uv", _rel("1.2.0"))
     assert plan.method == "uv"
     assert "uv" in plan.command
     assert "--force" in plan.command
     assert up.PYPI_NAME in plan.command
+    assert "git+ssh://" in " ".join(plan.command)
+
+
+def test_build_upgrade_command_uv_https_override():
+    plan = build_upgrade_command("uv", _rel("1.2.0"), git_url=up.GIT_URL_HTTPS)
+    assert "git+https://" in " ".join(plan.command)
 
 
 def test_build_upgrade_command_pipx():
@@ -97,11 +103,16 @@ def test_build_upgrade_command_pipx():
     assert up.PYPI_NAME in plan.command
 
 
-def test_build_upgrade_command_pip():
+def test_build_upgrade_command_pip_default_ssh():
     plan = build_upgrade_command("pip", _rel("1.2.0"))
     assert plan.method == "pip"
     assert "--upgrade" in plan.command
-    assert "1.2.0" in " ".join(plan.command)
+    assert "git+ssh://" in " ".join(plan.command)
+
+
+def test_build_upgrade_command_pip_https_override():
+    plan = build_upgrade_command("pip", _rel("1.2.0"), git_url=up.GIT_URL_HTTPS)
+    assert "git+https://" in " ".join(plan.command)
 
 
 # ── run_upgrade: up-to-date → no-op ─────────────────────────────────────

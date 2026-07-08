@@ -128,15 +128,36 @@ def search_cmd(
     run_search(query, top_k=top_k)
 
 
-# ── upgrade ─────────────────────────────────────────────────────────────────
+# ── upgrade / update ─────────────────────────────────────────────────────────
+# ``ppb update`` is functionally identical to ``ppb upgrade`` — same options,
+# same logic, same exit codes. Typer only supports one canonical name per
+# command function, so the two subcommands delegate to the shared kernel
+# ``_do_upgrade``. Any edit here MUST be kept in lock-step so the two remain
+# equivalent (the ``ppb update`` line MUST mirror ``ppb upgrade``).
+
+def _do_upgrade(yes: bool, use_https: bool) -> int:
+    """Shared kernel — both ``upgrade`` and ``update`` call this."""
+    from phrasebank.upgrade import run_upgrade
+    return run_upgrade(assume_yes=yes, prefer_https=use_https)
+
 
 @app.command("upgrade")
-@app.command("update")  # alias
 def upgrade_cmd(
     yes: bool = typer.Option(False, "--yes", "-y", help="跳过确认"),
+    use_https: bool = typer.Option(
+        False, "--https", help="使用 HTTPS 拉取仓库 (默认 SSH)",
+    ),
 ) -> None:
-    """检测是否有新版本并自动升级 ppb。"""
-    from phrasebank.upgrade import run_upgrade
+    """检查是否有新版本并自动升级 ppb (SSH 优先)。"""
+    raise SystemExit(_do_upgrade(yes=yes, use_https=use_https))
 
-    rc = run_upgrade(assume_yes=yes)
-    raise SystemExit(rc)
+
+@app.command("update")
+def update_cmd(
+    yes: bool = typer.Option(False, "--yes", "-y", help="跳过确认"),
+    use_https: bool = typer.Option(
+        False, "--https", help="使用 HTTPS 拉取仓库 (默认 SSH)",
+    ),
+) -> None:
+    """升级 ppb (``ppb upgrade`` 的别名)。"""
+    raise SystemExit(_do_upgrade(yes=yes, use_https=use_https))
