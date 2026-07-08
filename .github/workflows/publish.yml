@@ -11,6 +11,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch: {}   # manual trigger for re-runs / recovery
 
 permissions:
   id-token: write   # Required for PyPI Trusted Publishing (OIDC)
