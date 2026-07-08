@@ -1,0 +1,29 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# build artifacts (never commit generated packages)
+dist/
+build/
+*.whl
+*.tar.gz
+
+# local runtime data — lives in ~/.local/share/ppb and ~/.config/ppb
+# user config + vector store + review queue — never track
+ppb_data/
+
+# user test fixtures (private academic PDFs)
+test_input/
+
+# env / editor
+.env
+.envrc
+.vscode/
+.idea/
+*.swp

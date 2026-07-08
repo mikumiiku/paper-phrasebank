@@ -1,0 +1,49 @@
+[project]
+name = "paper-phrasebank"
+version = "1.0.0"
+description = "Personal academic phrase bank: extract reusable template sentences from papers into a local vector store, search by natural language when writing."
+requires-python = ">=3.10"
+readme = "README.md"
+authors = [{ name = "paper-phrasebank" }]
+license = { text = "MIT" }
+
+dependencies = [
+    "typer>=0.12.0",
+    "questionary>=2.0.0",
+    "rich>=13.7.0",
+    "pymupdf>=1.24.0",
+    "python-docx>=1.1.0",
+    "openai>=1.40.0",
+    "sentence-transformers>=3.0.0",
+    "chromadb>=0.5.0",
+    "platformdirs>=4.2.0",
+    "tomli>=2.0.0",
+    "tomli-w>=1.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[project.scripts]
+ppb = "phrasebank.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phrasebank"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra -q"
+
+[dependency-groups]
+dev = [
+    "respx>=0.23.1",
+]
