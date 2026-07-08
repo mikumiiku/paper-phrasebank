@@ -1,8 +1,18 @@
-"""PaddleOCR API backend.
+"""PaddleOCR backend — local self-host.
 
-Generic contract for an HTTP-exposed PaddleOCR-compatible service: POST raw
-image bytes to ``/ocr``, receive ``{text: "..."}`` (or list of recognised
-lines). If your deployment uses a different route/shape, adjust here.
+PaddleOCR does **not** provide a hosted public OCR API. The standard way to use
+it with ``ppb`` is to run the PaddleOCR HTTP service locally:
+
+.. code-block:: bash
+
+    docker run -d --name paddleocr \\
+        -p 8866:8866 \\
+        paddlepaddle/paddleocr:latest \\
+        paddleocr serving start --port 8866
+
+Then point ``ocr_base_url`` at ``http://localhost:8866`` (the default). We
+expose that conventional address as ``DEFAULT_BASE_URL`` so the config UI can
+autofill it — the user only changes it if they chose a different host/port.
 """
 from __future__ import annotations
 
@@ -13,13 +23,16 @@ from . import OcrBackend, http_client, register
 
 @register("paddle")
 class PaddleBackend:
-    """Generic PaddleOCR-compatible HTTP service."""
+    """PaddleOCR-compatible HTTP service (typically local)."""
 
+    # Conventional local deployment address — the user only overrides when
+    # they chose a different host/port. PaddleOCR has no official hosted API.
+    DEFAULT_BASE_URL = "http://localhost:8866"
     name = "paddle"
 
     def __init__(self, *, api_key: str = "", base_url: str = "") -> None:
         if not base_url:
-            raise ValueError("PaddleOCR 需要提供 base_url")
+            base_url = self.DEFAULT_BASE_URL
         self._api_key = api_key
         self._client: httpx.Client = http_client(base_url)
 

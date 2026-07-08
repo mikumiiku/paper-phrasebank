@@ -81,30 +81,39 @@ def _step_llm() -> Settings:
 
 
 def _step_ocr(s: Settings) -> Settings:
-    """Step 2: OCR backend (optional)."""
+    """Step 2: OCR backend (optional). The official base_url is filled in
+    automatically; the user is only asked for the API key (if required)."""
+    from phrasebank.ocr import REGISTRY, configured_base_url
+
     questionary.print("\n[bold]第二步：OCR 后端（可选）[/bold]")
     backend = questionary.select(
         "选择 OCR 后端（用于处理图片型 PDF 页面）：",
         choices=[
             questionary.Choice("暂不启用 OCR", ""),
-            questionary.Choice("MinerU API", "mineru"),
-            questionary.Choice("PaddleOCR API", "paddle"),
+            questionary.Choice("MinerU API (官方云端)", "mineru"),
+            questionary.Choice("PaddleOCR (推荐本地部署, 默认 http://localhost:8866)", "paddle"),
         ],
     ).ask()
     if backend is None:
         raise typer.Exit(1)
     s.ocr_backend = backend
     if backend:
-        s.ocr_api_key = _ask_password(
-            f"{backend} API Key（无密钥可直接回车跳过）：", allow_empty=True
-        )
-        if backend == "mineru":
-            s.ocr_base_url = _ask_text(
-                "MinerU Base URL：",
-                default="https://api.mineru.net/v4",
-            )
+        needs_key = (backend == "mineru")
+        if needs_key:
+            s.ocr_api_key = _ask_password("MinerU API Key：", allow_empty=False)
         else:
-            s.ocr_base_url = _ask_text("PaddleOCR Base URL：", default="")
+            questionary.print("  [dim]PaddleOCR 默认无认证, API Key 可跳过。[/dim]")
+            s.ocr_api_key = _ask_password(
+                "PaddleOCR API Key（本地默认无认证, 回车跳过）：", allow_empty=True
+            )
+        # Official/local-auto base_url (shown to the user for transparency)
+        official = configured_base_url(backend)
+        if official:
+            questionary.print(f"  官方/默认地址: [cyan]{official}[/dim]（使用默认直接回车）")
+            override = _ask_text("Base URL (回车使用默认)：", default=official)
+            s.ocr_base_url = override
+        else:
+            s.ocr_base_url = ""
     return s
 
 

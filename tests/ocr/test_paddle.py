@@ -29,9 +29,18 @@ def test_paddle_results_of_dicts():
     assert be.recognize(1, b"img") == "x\ny"
 
 
-def test_paddle_requires_base_url():
-    with pytest.raises(ValueError):
-        PaddleBackend(api_key="k", base_url="")
+def test_paddle_uses_default_base_url_when_empty():
+    """PaddleBackend no longer requires a base_url — it falls back to the
+    conventional local deployment address http://localhost:8866."""
+    be = PaddleBackend(api_key="k", base_url="")
+    # stored via the underlying client's base_url
+    assert "localhost:8866" in str(be._client.base_url)
+
+
+def test_paddle_override_base_url_is_honoured():
+    """But an explicit override (self-host / different port) is still used."""
+    be = PaddleBackend(api_key="k", base_url="http://ocr.example.com:9999")
+    assert "ocr.example.com:9999" in str(be._client.base_url)
 
 
 def test_registry_wires_paddle():
