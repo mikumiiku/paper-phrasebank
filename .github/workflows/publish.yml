@@ -1,0 +1,102 @@
+# Publish to PyPI via Trusted Publishing (no long-lived token).
+# Triggered on every version tag push (`v*`).
+#
+# Pre-requisite: one-time pre-registration of this repository + workflow on
+# https://pypi.org/manage/account/publishing/ (Project=paper-phrasebank,
+# Owner=mikumiiku, Repo=paper-phrasebank, Workflow=publish.yml).
+
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write   # Required for PyPI Trusted Publishing (OIDC)
+  contents: read
+
+# If two tag pushes race, cancel the older one — keep only the latest.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Sanity: tag name MUST match pyproject.toml version. A mismatch means
+  # someone forgot to bump the version before tagging — fail fast.
+  verify-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read declared version
+        id: ver
+        run: |
+          VER=$(python -c "import tomllib,sys; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "declared=$VER"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+      - name: Compare with tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          DECL="${{ steps.ver.outputs.version }}"
+          if [ "$TAG" != "$DECL" ]; then
+            echo "::error::tag v$TAG != pyproject version $DECL"
+            exit 1
+          fi
+          echo "OK: tag matches pyproject version $DECL"
+
+  build:
+    needs: verify-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+      - name: Build wheel + sdist
+        run: uv build
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+
+  publish:
+    needs: [verify-version, build]
+    runs-on: ubuntu-latest
+    # Only publish on the release event, not on dry-runs / pre-releases.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    environment: pypi   # matches the optional PyPI environment you may have set
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI via Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Attach the freshly-built wheel/sdist to the matching GitHub Release.
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Attach assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
